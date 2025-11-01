@@ -23,4 +23,4 @@ select * FROM Users; -- 'select' is not recognized as keyword
 SELECT @ FROM table1; -- @ is invalid
 
 -- Test unclosed string
--- SELECT name FROM test WHERE desc = 'unclosed;
+SELECT name FROM test WHERE desc = 'unclosed;
