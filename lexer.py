@@ -1,8 +1,8 @@
 """Lexical Analyzer for SQL-like Language - Phase 1"""
 import sys
 
-# Keywords (case-sensitive)
-KEYWORDS = {'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE', 'CREATE', 'TABLE', 'INT', 'FLOAT', 'TEXT', 'AND', 'OR', 'NOT'}
+KEYWORDS = {'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 
+            'DELETE', 'CREATE', 'TABLE', 'INT', 'FLOAT', 'TEXT', 'AND', 'OR', 'NOT'}
 
 class Lexer:
     def __init__(self, code):
@@ -69,7 +69,12 @@ class Lexer:
     def read_number(self):
         start_line, start_col = self.line, self.col
         value = ""
+        has_dot = False
         while self.current() and (self.current().isdigit() or self.current() == '.'):
+            if self.current() == '.':
+                if has_dot:
+                    break
+                has_dot = True
             value += self.current()
             self.advance()
         return ('NUMBER_LITERAL', value, start_line, start_col)
@@ -84,13 +89,18 @@ class Lexer:
         if value in KEYWORDS:
             return (value, value, start_line, start_col)
         else:
+            if value.upper() in KEYWORDS:
+                self.errors.append(f"Error: keyword '{value.upper()}' must be uppercase at line {start_line}, column {start_col}.")
+            
             if value not in self.symbols:
                 self.symbols[value] = {'line': start_line, 'col': start_col, 'count': 0}
             self.symbols[value]['count'] += 1
             return ('IDENTIFIER', value, start_line, start_col)
     
     def tokenize(self):
-        operators = {'+': 'PLUS', '-': 'MINUS', '*': 'MULTIPLY', '/': 'DIVIDE', '%': 'MODULO', '=': 'EQUAL', '<': 'LESS_THAN', '>': 'GREATER_THAN', '(': 'LPAREN', ')': 'RPAREN', ',': 'COMMA', ';': 'SEMICOLON', '.': 'DOT'}
+        operators = {'+': 'PLUS', '-': 'MINUS', '*': 'MULTIPLY', '/': 'DIVIDE', 
+                    '%': 'MODULO', '=': 'EQUAL', '<': 'LESS_THAN', '>': 'GREATER_THAN', 
+                    '(': 'LPAREN', ')': 'RPAREN', ',': 'COMMA', ';': 'SEMICOLON', '.': 'DOT'}
         
         while self.current():
             if self.current() in ' \t\n\r':
@@ -146,41 +156,42 @@ def main():
     lexer = Lexer(code)
     tokens = lexer.tokenize()
     
-    print("="*70)
+    print("=" * 70)
     print("LEXICAL ANALYZER - SQL-LIKE LANGUAGE")
-    print("="*70)
+    print("=" * 70)
     print(f"Input file: {input_file}")
-    print("="*70)
+    print("=" * 70)
     
     if lexer.errors:
-        print("LEXICAL ERRORS")
-        print("="*70)
+        print("\nLEXICAL ERRORS")
+        print("=" * 70)
         for error in lexer.errors:
             print(error)
-        print("="*70)
+        print("=" * 70)
     
-    print("TOKENS")
-    print("="*70)
+    print("\nTOKENS")
+    print("=" * 70)
     print(f"{'Token':<20} {'Lexeme':<20} {'Line':<10} {'Column':<10}")
-    print("-"*70)
+    print("-" * 70)
     for token in tokens:
         print(f"{token[0]:<20} {token[1]:<20} {token[2]:<10} {token[3]:<10}")
-    print("="*70)
+    print("=" * 70)
     
-    print("SYMBOL TABLE")
-    print("="*70)
+    print("\nSYMBOL TABLE")
+    print("=" * 70)
     print(f"{'Identifier':<20} {'Type':<15} {'First Seen':<20} {'Count':<10}")
-    print("-"*70)
+    print("-" * 70)
     for name, info in sorted(lexer.symbols.items()):
-        print(f"{name:<20} {'IDENTIFIER':<15} Line {info['line']}, Col {info['col']:<10} {info['count']:<10}")
-    print("="*70)
+        first_seen = f"Line {info['line']}, Col {info['col']}"
+        print(f"{name:<20} {'IDENTIFIER':<15} {first_seen:<20} {info['count']:<10}")
+    print("=" * 70)
     
-    print("SUMMARY")
-    print("="*70)
-    print(f"Total tokens (excluding EOF): {len(tokens)}")
+    print("\nSUMMARY")
+    print("=" * 70)
+    print(f"Total tokens: {len(tokens)}")
     print(f"Total identifiers: {len(lexer.symbols)}")
     print(f"Total errors: {len(lexer.errors)}")
-    print("="*70)
+    print("=" * 70)
 
 if __name__ == "__main__":
     main()
