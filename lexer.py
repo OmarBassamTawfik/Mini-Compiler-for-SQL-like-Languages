@@ -1,4 +1,3 @@
-"""Lexical Analyzer for SQL-like Language - Phase 1"""
 import sys
 
 KEYWORDS = {'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 
@@ -35,17 +34,43 @@ class Lexer:
     
     def skip_comment(self):
         if self.current() == '-' and self.peek() == '-':
+            self.advance()
+            self.advance()
             while self.current() and self.current() != '\n':
                 self.advance()
-        elif self.current() == '#':
+            return
+        
+        if self.current() == '/' and self.peek() == '*':
             start_line, start_col = self.line, self.col
             self.advance()
+            self.advance()
             while self.current():
-                if self.current() == '#':
+                if self.current() == '*' and self.peek() == '/':
+                    self.advance()
                     self.advance()
                     return
                 self.advance()
             self.errors.append(f"Error: unclosed comment starting at line {start_line}, column {start_col}.")
+            return
+        
+        if self.current() == '#' and self.peek() == '#':
+            start_line, start_col = self.line, self.col
+            self.advance()
+            self.advance()
+            while self.current():
+                if self.current() == '#' and self.peek() == '#':
+                    self.advance()
+                    self.advance()
+                    return
+                self.advance()
+            self.errors.append(f"Error: unclosed comment starting at line {start_line}, column {start_col}.")
+            return
+
+        if self.current() == '#':
+            self.advance()
+            while self.current() and self.current() != '\n':
+                self.advance()
+            return
     
     def read_string(self):
         start_line, start_col = self.line, self.col
@@ -106,6 +131,8 @@ class Lexer:
             if self.current() in ' \t\n\r':
                 self.skip_whitespace()
             elif self.current() == '-' and self.peek() == '-':
+                self.skip_comment()
+            elif self.current() == '/' and self.peek() == '*':
                 self.skip_comment()
             elif self.current() == '#':
                 self.skip_comment()
