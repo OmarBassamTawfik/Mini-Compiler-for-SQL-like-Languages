@@ -315,4 +315,3 @@ Expected results:
 ## Course Information
 
 CSCI415: Compiler Design Project  
-Phase 1 & 2: Lexical and Syntax Analysis
