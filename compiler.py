@@ -4,6 +4,7 @@ import json
 import urllib.parse
 from lexer import Lexer
 from parser import Parser
+from semantic import SemanticAnalyzer
 import os
 
 PORT = 8080
@@ -45,6 +46,10 @@ class CompilerHandler(http.server.SimpleHTTPRequestHandler):
             parser = Parser(tokens)
             parse_tree = parser.parse()
             
+            # Run semantic analysis
+            semantic = SemanticAnalyzer(parse_tree, tokens)
+            semantic_errors = semantic.analyze()
+            
             # Format results
             result = {
                 'lexer': {
@@ -58,10 +63,17 @@ class CompilerHandler(http.server.SimpleHTTPRequestHandler):
                     'errors': parser.errors,
                     'tree': self.tree_to_dict(parse_tree) if parse_tree else None
                 },
+                'semantic': {
+                    'errors': semantic_errors,
+                    'symbol_table': semantic.symbol_table,
+                    'symbol_table_dump': semantic.get_symbol_table_dump(),
+                    'annotated_tree': semantic.get_annotated_tree()
+                },
                 'summary': {
                     'lexical_errors': len(lexer.errors),
                     'syntax_errors': len(parser.errors),
-                    'success': len(lexer.errors) == 0 and len(parser.errors) == 0
+                    'semantic_errors': len(semantic_errors),
+                    'success': len(lexer.errors) == 0 and len(parser.errors) == 0 and len(semantic_errors) == 0
                 }
             }
             
@@ -110,22 +122,23 @@ class CompilerHandler(http.server.SimpleHTTPRequestHandler):
     <div class="container">
         <header>
             <h1>SQL-Like Language Compiler</h1>
-            <p>Lexical & Syntax Analysis</p>
+            <p>Lexical, Syntax & Semantic Analysis</p>
         </header>
         
         <div class="toolbar">
             <select id="fileSelect">
                 <option value="">-- Select a file --</option>
             </select>
-            <button onclick="loadFile()" class="btn">Load File</button>
-            <button onclick="analyze()" class="btn btn-primary">Run Analysis</button>
-            <button onclick="clearAll()" class="btn">Clear</button>
+            <button class="btn" onclick="loadFile()">Load File</button>
+            <button class="btn btn-primary" onclick="analyze()">Analyze Code</button>
+            <button class="btn" onclick="clearAll()">Clear Output</button>
         </div>
         
         <div class="tabs">
             <button class="tab-btn active" onclick="showTab('source')">Source Code</button>
             <button class="tab-btn" onclick="showTab('lexer')">Lexical Analysis</button>
             <button class="tab-btn" onclick="showTab('parser')">Syntax Analysis</button>
+            <button class="tab-btn" onclick="showTab('semantic')">Semantic Analysis</button>
             <button class="tab-btn" onclick="showTab('summary')">Summary</button>
         </div>
         
@@ -139,6 +152,10 @@ class CompilerHandler(http.server.SimpleHTTPRequestHandler):
         
         <div id="parser" class="tab-content">
             <div id="parserOutput"></div>
+        </div>
+        
+        <div id="semantic" class="tab-content">
+            <div id="semanticOutput"></div>
         </div>
         
         <div id="summary" class="tab-content">
@@ -195,11 +212,11 @@ class CompilerHandler(http.server.SimpleHTTPRequestHandler):
         function analyze() {
             const code = document.getElementById('sourceCode').value;
             if (!code.trim()) {
-                setStatus('Please enter some code first');
+                setStatus('Please enter some code to analyze');
                 return;
             }
             
-            setStatus('Running analysis...');
+            setStatus('Analyzing...');
             
             fetch('/analyze', {
                 method: 'POST',
@@ -210,12 +227,13 @@ class CompilerHandler(http.server.SimpleHTTPRequestHandler):
             .then(data => {
                 displayLexerResults(data.lexer);
                 displayParserResults(data.parser);
+                displaySemanticResults(data.semantic);
                 displaySummary(data);
                 
                 if (data.summary.success) {
                     setStatus('✓ Analysis complete - No errors');
                 } else {
-                    setStatus(`Analysis complete with errors (Lexical: ${data.summary.lexical_errors}, Syntax: ${data.summary.syntax_errors})`);
+                    setStatus(`Analysis complete with errors (Lexical: ${data.summary.lexical_errors}, Syntax: ${data.summary.syntax_errors}, Semantic: ${data.summary.semantic_errors})`);
                 }
                 
                 showTab('summary');
@@ -278,21 +296,32 @@ class CompilerHandler(http.server.SimpleHTTPRequestHandler):
             for (let i = 0; i < node.children.length; i++) {
                 const isLast = i === node.children.length - 1;
                 const child = node.children[i];
-                result += prefix + (isLast ? '└── ' : '├── ') + child.name + '\\n';
-                result += renderSubtree(child, prefix + (isLast ? '    ' : '│   '));
+                result += prefix + (isLast ? '└── ' : '├── ');
+                result += renderTree(child, prefix + (isLast ? '    ' : '│   '));
             }
             return result;
         }
         
-        function renderSubtree(node, prefix) {
-            let result = '';
-            for (let i = 0; i < node.children.length; i++) {
-                const isLast = i === node.children.length - 1;
-                const child = node.children[i];
-                result += prefix + (isLast ? '└── ' : '├── ') + child.name + '\\n';
-                result += renderSubtree(child, prefix + (isLast ? '    ' : '│   '));
+        function displaySemanticResults(semantic) {
+            let html = '<h2>SEMANTIC ANALYSIS RESULTS</h2>';
+            
+            if (semantic.errors.length > 0) {
+                html += '<h3>Semantic Errors:</h3><pre class="errors">';
+                semantic.errors.forEach(e => html += '• ' + e + '\\n');
+                html += '</pre>';
+            } else {
+                html += '<p class="success">✓ Semantic Analysis Successful. Query is valid.</p>';
             }
-            return result;
+            
+            html += '<h3>Symbol Table:</h3>';
+            html += '<pre class="tree">' + semantic.symbol_table_dump + '</pre>';
+            
+            if (semantic.errors.length === 0 && semantic.annotated_tree) {
+                html += '<h3>Annotated Parse Tree:</h3>';
+                html += '<pre class="tree">' + semantic.annotated_tree + '</pre>';
+            }
+            
+            document.getElementById('semanticOutput').innerHTML = html;
         }
         
         function displaySummary(data) {
@@ -302,6 +331,7 @@ class CompilerHandler(http.server.SimpleHTTPRequestHandler):
             html += `<tr><td>Total identifiers:</td><td>${data.lexer.identifier_count}</td></tr>`;
             html += `<tr><td>Lexical errors:</td><td>${data.summary.lexical_errors}</td></tr>`;
             html += `<tr><td>Syntax errors:</td><td>${data.summary.syntax_errors}</td></tr>`;
+            html += `<tr><td>Semantic errors:</td><td>${data.summary.semantic_errors}</td></tr>`;
             html += '<tr><td>Status:</td><td>';
             if (data.summary.success) {
                 html += '<span class="success">✓ COMPILATION SUCCESSFUL</span>';
@@ -316,6 +346,7 @@ class CompilerHandler(http.server.SimpleHTTPRequestHandler):
         function clearAll() {
             document.getElementById('lexerOutput').innerHTML = '';
             document.getElementById('parserOutput').innerHTML = '';
+            document.getElementById('semanticOutput').innerHTML = '';
             document.getElementById('summaryOutput').innerHTML = '';
             setStatus('Output cleared');
         }

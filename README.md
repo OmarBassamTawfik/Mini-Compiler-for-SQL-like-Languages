@@ -1,18 +1,21 @@
 # SQL-Like Language Compiler
 
-A two-phase compiler implementation for a SQL-like language, featuring lexical analysis and syntax analysis with comprehensive error handling and recovery.
+A complete three-phase compiler implementation for a SQL-like language, featuring lexical analysis, syntax analysis, and semantic analysis with comprehensive error handling and recovery.
 
 ## Project Structure
 
 ```
 .
-├── lexer.py          # Phase 1: Lexical Analyzer
-├── parser.py         # Phase 2: Syntax Analyzer (Parser)
-├── compiler.py       # Web-based compiler interface
-├── test_input.sql    # Test file with lexical errors
-├── test_valid.sql    # Test file with valid SQL
-├── test_errors.sql   # Test file for syntax error recovery
-└── README.md         # This file
+├── lexer.py                  # Phase 1: Lexical Analyzer
+├── parser.py                 # Phase 2: Syntax Analyzer
+├── semantic.py               # Phase 3: Semantic Analyzer
+├── compiler.py               # Web-based compiler interface
+├── test_success.sql          # Test: All phases pass
+├── test_failure.sql          # Test: All phases fail
+├── test_lexical_error.sql    # Test: Phase 1 failure
+├── test_syntax_error.sql     # Test: Phase 2 failure
+├── test_semantic_error.sql   # Test: Phase 3 failure
+└── README.md                 # This file
 ```
 
 ## Features
@@ -49,6 +52,28 @@ A two-phase compiler implementation for a SQL-like language, featuring lexical a
   - Comparison: =, !=, <, >, <=, >=
   - Logical: AND, OR, NOT
 - Detailed syntax error reporting with "expected vs found" format
+
+### Phase 3: Semantic Analyzer (`semantic.py`)
+- Validates logical correctness of SQL queries
+- **Symbol Table Management:**
+  - Hierarchical structure tracking tables and their columns
+  - Stores data types (INT, FLOAT, TEXT) for each column
+  - Populated during CREATE TABLE processing
+- **Semantic Checks:**
+  - **Table Existence:** Verifies tables exist before INSERT, SELECT, UPDATE, DELETE
+  - **Column Existence:** Validates all column references within table scope
+  - **Redeclaration Prevention:** Blocks duplicate CREATE TABLE statements
+  - **Data Type Validation:** Only INT, FLOAT, TEXT allowed
+  - **INSERT Type Checking:** Validates value count and type compatibility
+  - **WHERE Type Compatibility:** Ensures type-safe comparisons
+- **Type Checking Rules:**
+  - INT: Requires integer literals (no decimal point)
+  - FLOAT: Accepts any numeric literal
+  - TEXT: Requires string literals
+- **Output:**
+  - Symbol table dump showing all tables and columns
+  - Annotated parse tree with type information
+  - Detailed error messages with line/column numbers
 
 ### Grammar Supported
 
@@ -106,9 +131,10 @@ CREATE TABLE employees (
     salary FLOAT
 );
 
--- Complex WHERE with AND/OR
-SELECT * FROM items WHERE price > 10 AND stock <= 100 OR discount > 0;
-
+-- Complex WHERE with AND/OR (tokens, symbol table, errors)
+- Phase 2: Syntax analysis results (parse tree, errors)
+- Phase 3: Semantic analysis results (symbol table, type annotations, errors)
+- Complete annotated
 -- Expression in SELECT
 SELECT price * 1.1, quantity + 5 FROM products;
 ```
@@ -134,10 +160,9 @@ SELECT price * 1.1, quantity + 5 FROM products;
 - Compilation summary with success/failure status
 
 ## Error Handling
+ across all three phases:
 
-The compiler detects and reports errors with comprehensive information:
-
-### Lexical Errors:
+### Phase 1 - Lexical Errors:
 - Invalid characters
 - Unclosed strings
 - Unclosed comments
@@ -149,7 +174,7 @@ Error: invalid character '@' at line 41, column 8.
 Error: keyword 'SELECT' must be uppercase at line 44, column 1.
 ```
 
-### Syntax Errors:
+### Phase 2 - Syntax Errors:
 - Missing tokens (e.g., missing FROM, VALUES, parentheses)
 - Unexpected tokens (e.g., double commas, wrong keywords)
 - Invalid statement structure
@@ -161,12 +186,28 @@ Syntax Error: Expected 'FROM' at line 4, column 18, but found 'WHERE'.
 Syntax Error: Expected factor (identifier, number, string, or '(') at line 16, column 13, but found ','.
 ```
 
+### Phase 3 - Semantic Errors:
+- Table not declared before use
+- Column doesn't exist in table
+- Duplicate table declarations
+- Type mismatches in INSERT statements
+- Wrong number of values in INSERT
+- Type incompatibility in WHERE comparisons
+- Invalid data types
+
+**Example:**
+```
+Semantic Error: Table 'users' is not declared at line 2, column 13.
+Semantic Error: Type mismatch at line 5, column 20. Column 'age' is defined as INT, but a STRING literal was provided for insertion.
+```
+
 ### Error Recovery:
 - **Panic Mode Recovery**: When an error is detected, the parser skips tokens until it finds a synchronization point
 - **Synchronization Tokens**: SEMICOLON, SELECT, INSERT, UPDATE, DELETE, CREATE
 - **Multiple Error Detection**: Finds all errors in a single compilation pass
 - **Partial Parse Trees**: Generates parse trees even when errors are present
 - **Continue After Errors**: Parser continues analyzing the rest of the file after recovering from errors
+- **Semantic Continuation**: Even with lexical/syntax errors, semantic analysis attempts to validate what it can
 
 This allows developers to see all issues at once rather than fixing one error at a time.
 
@@ -180,10 +221,11 @@ This allows developers to see all issues at once rather than fixing one error at
   - `read_string()`, `read_number()`, `read_word()`: Token extraction methods
   - Symbol table tracking for identifiers
   
-- **Parser**: Recursive descent parser with error recovery
-  - `Parser.__init__()`: Initialize with token stream
-  - `parse()`: Main parsing entry point with error handling
-  - `parse_statement()`: Parse individual statements
+- **Parser**: Re8 lines
+- `parser.py`: 314 lines (includes error recovery)
+- `semantic.py`: 526 lines (includes type checking and symbol table)
+- `compiler.py`: 554 lines (web-based GUI with 3-phase integration)
+- **Total**: ~1,56ment()`: Parse individual statements
   - `parse_create/insert/select/update/delete()`: Statement-specific parsers
   - `parse_expression/term/factor()`: Expression parsing with precedence
   - `parse_condition()`: WHERE clause parsing with AND/OR/NOT
@@ -193,23 +235,54 @@ This allows developers to see all issues at once rather than fixing one error at
 - **Compiler**: Integration of both phases
   - Runs lexical analysis first
   - Passes tokens to parser
-  - Displays comprehensive results
-  - No standalone execution in lexer/parser (library modules only)
+ hree comprehensive test files are included:
 
-### Code Statistics
-- `lexer.py`: 169 lines
-- `parser.py`: 312 lines (includes error recovery)
-- `compiler.py`: 310 lines (web-based GUI)
-- **Total**: ~790 lines of code
+### 1. `test_success.py` - Complete Successful Compilation
+Tests a query that passes all three phases:
+```bash
+python3 test_success.py
+```
+**Expected:** ✓ All phases pass, full symbol table and annotated parse tree generated
 
-### Parsing Technique
-- **Recursive Descent Parsing**: Each grammar rule is implemented as a method
-- **Panic Mode Error Recovery**: Skips to synchronization points after errors
-- **Parse Tree Generation**: Hierarchical representation of program structure
-- **Error Propagation**: Continues parsing to detect multiple errors
+### 2. `test_failure.py` - Complete Failed Compilation  
+Tests queries with errors in all three phases:
+```bash
+python3 test_failure.py
+```
+**Expected:** ❌ Lexical, syntax, and semantic errors detected
 
-## Testing
+### 3. `test_phase_errors.py` - Phase-Specific Error Examples
+Tests individual phase failures:
+```bash
+python3 test_phase_errors.py
+```
+**Expected:** 
+- Phase 1 errors: Invalid characters, unclosed strings
+- Phase 2 errors: Missing tokens, malformed statements
+- Phase 3 errors: Type mismatches, undeclared tables
 
+### Web Interface Testing
+```bash
+python3 compiler.py
+# OQuick Start
+
+```bash
+# Run web interface
+python3 compiler.py
+# Open: http://localhost:8080
+
+# Load test files from the dropdown menu:
+# - test_success.sql       (all phases pass)
+# - test_failure.sql       (all phases fail)
+# - test_lexical_error.sql (phase 1 fails)
+# - test_syntax_error.sql  (phase 2 fails)
+# - test_semantic_error.sql(phase 3 fails)
+```
+
+## Course Information
+
+CSCI415: Compiler Design Project  
+Complete 3-Phase Compiler: Lexical, Syntax, and Semantic
 Test files are included:
 - `test_valid.sql`: Valid SQL statements for successful parsing (8 statements)
 - `test_input.sql`: Test cases with lexical errors (163 tokens, 3 lexical errors)
