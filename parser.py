@@ -1,6 +1,3 @@
-import sys
-from lexer import Lexer
-
 class ParseNode:
     def __init__(self, name, value=None, children=None):
         self.name, self.value, self.children = name, value, children if children else []

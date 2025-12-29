@@ -1,15 +1,12 @@
-from parser import ParseNode
-
 class SemanticAnalyzer:
     def __init__(self, parse_tree, tokens):
         self.parse_tree = parse_tree
         self.tokens = tokens
         self.errors = []
-        self.symbol_table = {}  # {table_name: {columns: {col_name: type}}}
+        self.symbol_table = {}
         self.token_map = self._build_token_map()
     
     def _build_token_map(self):
-        """Build a map of token values to their line/column info for error reporting"""
         token_map = {}
         for token in self.tokens:
             token_type, value, line, col = token
@@ -18,24 +15,20 @@ class SemanticAnalyzer:
         return token_map
     
     def get_token_info(self, value):
-        """Get line and column info for a token value"""
         if value in self.token_map:
             return self.token_map[value]
         return {'line': 0, 'col': 0, 'type': 'UNKNOWN'}
     
     def analyze(self):
-        """Main entry point for semantic analysis"""
         if not self.parse_tree:
             return self.errors
         
-        # First pass: collect all CREATE TABLE statements
         for stmt_node in self.parse_tree.children:
             if stmt_node.name == "Statement":
                 for child in stmt_node.children:
                     if child.name == "CreateStmt":
                         self._process_create(child)
         
-        # Second pass: validate all other statements
         for stmt_node in self.parse_tree.children:
             if stmt_node.name == "Statement":
                 for child in stmt_node.children:
@@ -51,11 +44,9 @@ class SemanticAnalyzer:
         return self.errors
     
     def _process_create(self, node):
-        """Process CREATE TABLE statement and populate symbol table"""
         table_name = None
         columns = {}
         
-        # Extract table name
         for child in node.children:
             if child.name == "IDENTIFIER":
                 table_name = child.value
@@ -64,7 +55,6 @@ class SemanticAnalyzer:
         if not table_name:
             return
         
-        # Check for table redeclaration
         if table_name in self.symbol_table:
             token_info = self.get_token_info(table_name)
             self.errors.append(
@@ -72,16 +62,13 @@ class SemanticAnalyzer:
             )
             return
         
-        # Extract column definitions
         for child in node.children:
             if child.name == "ColumnList":
                 self._extract_columns(child, columns)
         
-        # Add to symbol table
         self.symbol_table[table_name] = {'columns': columns}
     
     def _extract_columns(self, node, columns):
-        """Extract column definitions from ColumnList"""
         for child in node.children:
             if child.name == "ColumnDef":
                 col_name = None
@@ -94,7 +81,6 @@ class SemanticAnalyzer:
                         col_type = subchild.value
                 
                 if col_name and col_type:
-                    # Validate data type
                     if col_type not in ['INT', 'FLOAT', 'TEXT']:
                         token_info = self.get_token_info(col_type)
                         self.errors.append(
@@ -103,11 +89,9 @@ class SemanticAnalyzer:
                     columns[col_name] = col_type
     
     def _process_insert(self, node):
-        """Process INSERT statement and validate types"""
         table_name = None
         values = []
-        
-        # Extract table name
+
         for child in node.children:
             if child.name == "IDENTIFIER":
                 table_name = child.value
@@ -116,7 +100,6 @@ class SemanticAnalyzer:
         if not table_name:
             return
         
-        # Check if table exists
         if table_name not in self.symbol_table:
             token_info = self.get_token_info(table_name)
             self.errors.append(
@@ -124,12 +107,10 @@ class SemanticAnalyzer:
             )
             return
         
-        # Extract values
         for child in node.children:
             if child.name == "ValueList":
                 self._extract_values(child, values)
         
-        # Validate value count and types
         table_columns = list(self.symbol_table[table_name]['columns'].items())
         
         if len(values) != len(table_columns):
@@ -139,7 +120,6 @@ class SemanticAnalyzer:
             )
             return
         
-        # Check type compatibility
         for i, (col_name, col_type) in enumerate(table_columns):
             if i < len(values):
                 value_type, value_literal = values[i]
@@ -150,10 +130,8 @@ class SemanticAnalyzer:
                     )
     
     def _extract_values(self, node, values):
-        """Extract values from ValueList"""
         for child in node.children:
             if child.name == "Value":
-                # Value format is "TYPE:literal"
                 parts = child.value.split(':', 1)
                 if len(parts) == 2:
                     value_type = parts[0]
@@ -161,10 +139,8 @@ class SemanticAnalyzer:
                     values.append((value_type, value_literal))
     
     def _check_type_compatibility(self, col_type, value_type, value_literal):
-        """Check if value type is compatible with column type"""
         if col_type == "INT":
             if value_type == "NUMBER_LITERAL":
-                # Check if it's an integer (no decimal point)
                 return '.' not in value_literal
             return False
         elif col_type == "FLOAT":
@@ -174,22 +150,18 @@ class SemanticAnalyzer:
         return False
     
     def _process_select(self, node):
-        """Process SELECT statement and validate columns"""
         table_name = None
         columns = []
         
-        # Extract table name
         for i, child in enumerate(node.children):
             if child.name == "FROM":
-                # Next child should be the table identifier
                 if i + 1 < len(node.children) and node.children[i + 1].name == "IDENTIFIER":
                     table_name = node.children[i + 1].value
                 break
         
         if not table_name:
             return
-        
-        # Check if table exists
+
         if table_name not in self.symbol_table:
             token_info = self.get_token_info(table_name)
             self.errors.append(
@@ -197,12 +169,10 @@ class SemanticAnalyzer:
             )
             return
         
-        # Extract selected columns (if not *)
         for child in node.children:
             if child.name == "SelectList":
                 self._extract_select_columns(child, columns)
         
-        # Validate columns exist in table
         for col_name in columns:
             if col_name != "*" and col_name not in self.symbol_table[table_name]['columns']:
                 token_info = self.get_token_info(col_name)
@@ -210,13 +180,11 @@ class SemanticAnalyzer:
                     f"Semantic Error: Column '{col_name}' does not exist in table '{table_name}' at line {token_info['line']}, column {token_info['col']}."
                 )
         
-        # Process WHERE clause if present
         for child in node.children:
             if child.name == "WhereClause":
                 self._process_where(child, table_name)
     
     def _extract_select_columns(self, node, columns):
-        """Extract column names from SelectList"""
         for child in node.children:
             if child.name == "MULTIPLY":
                 columns.append("*")
@@ -224,19 +192,16 @@ class SemanticAnalyzer:
                 self._extract_expression_columns(child, columns)
     
     def _extract_expression_columns(self, node, columns):
-        """Extract column names from expressions"""
         for child in node.children:
             if child.name == "Expression":
                 self._extract_from_expression(child, columns)
     
     def _extract_from_expression(self, node, columns):
-        """Recursively extract identifiers from expressions"""
         for child in node.children:
             if child.name == "Term":
                 self._extract_from_term(child, columns)
     
     def _extract_from_term(self, node, columns):
-        """Recursively extract identifiers from terms"""
         for child in node.children:
             if child.name == "Factor":
                 if child.value and child.value.startswith("IDENTIFIER:"):
@@ -246,11 +211,9 @@ class SemanticAnalyzer:
                 self._extract_from_expression(child, columns)
     
     def _process_update(self, node):
-        """Process UPDATE statement and validate columns"""
         table_name = None
         assignments = []
         
-        # Extract table name
         for child in node.children:
             if child.name == "IDENTIFIER":
                 table_name = child.value
@@ -259,7 +222,6 @@ class SemanticAnalyzer:
         if not table_name:
             return
         
-        # Check if table exists
         if table_name not in self.symbol_table:
             token_info = self.get_token_info(table_name)
             self.errors.append(
@@ -267,12 +229,10 @@ class SemanticAnalyzer:
             )
             return
         
-        # Extract assignments
         for child in node.children:
             if child.name == "AssignmentList":
                 self._extract_assignments(child, assignments)
         
-        # Validate assignment columns and types
         for col_name, value_type, value_literal in assignments:
             if col_name not in self.symbol_table[table_name]['columns']:
                 token_info = self.get_token_info(col_name)
@@ -280,21 +240,18 @@ class SemanticAnalyzer:
                     f"Semantic Error: Column '{col_name}' does not exist in table '{table_name}' at line {token_info['line']}, column {token_info['col']}."
                 )
             else:
-                # Type check
                 col_type = self.symbol_table[table_name]['columns'][col_name]
                 if value_type and not self._check_type_compatibility(col_type, value_type, value_literal):
                     token_info = self.get_token_info(value_literal)
                     self.errors.append(
                         f"Semantic Error: Type mismatch at line {token_info['line']}, column {token_info['col']}. Column '{col_name}' is defined as {col_type}, but a {value_type} was provided."
                     )
-        
-        # Process WHERE clause if present
+                    
         for child in node.children:
             if child.name == "WhereClause":
                 self._process_where(child, table_name)
     
     def _extract_assignments(self, node, assignments):
-        """Extract assignments from AssignmentList"""
         for child in node.children:
             if child.name == "Assignment":
                 col_name = None
@@ -305,7 +262,6 @@ class SemanticAnalyzer:
                     if subchild.name == "IDENTIFIER":
                         col_name = subchild.value
                     elif subchild.name == "Expression":
-                        # Extract value type from expression
                         value_info = self._extract_value_from_expression(subchild)
                         if value_info:
                             value_type, value_literal = value_info
@@ -314,14 +270,12 @@ class SemanticAnalyzer:
                     assignments.append((col_name, value_type, value_literal))
     
     def _extract_value_from_expression(self, node):
-        """Extract literal value type from expression"""
         for child in node.children:
             if child.name == "Term":
                 return self._extract_value_from_term(child)
         return None
     
     def _extract_value_from_term(self, node):
-        """Extract literal value type from term"""
         for child in node.children:
             if child.name == "Factor":
                 if child.value and ':' in child.value:
@@ -330,13 +284,10 @@ class SemanticAnalyzer:
         return None
     
     def _process_delete(self, node):
-        """Process DELETE statement"""
         table_name = None
         
-        # Extract table name
         for i, child in enumerate(node.children):
             if child.name == "FROM":
-                # Next child should be the table identifier
                 if i + 1 < len(node.children) and node.children[i + 1].name == "IDENTIFIER":
                     table_name = node.children[i + 1].value
                 break
@@ -344,7 +295,6 @@ class SemanticAnalyzer:
         if not table_name:
             return
         
-        # Check if table exists
         if table_name not in self.symbol_table:
             token_info = self.get_token_info(table_name)
             self.errors.append(
@@ -352,19 +302,16 @@ class SemanticAnalyzer:
             )
             return
         
-        # Process WHERE clause if present
         for child in node.children:
             if child.name == "WhereClause":
                 self._process_where(child, table_name)
     
     def _process_where(self, node, table_name):
-        """Process WHERE clause and validate column references and type compatibility"""
         for child in node.children:
             if child.name == "Condition":
                 self._process_condition(child, table_name)
     
     def _process_condition(self, node, table_name):
-        """Process condition recursively"""
         for child in node.children:
             if child.name in ["AndCondition", "Condition"]:
                 self._process_condition(child, table_name)
@@ -372,12 +319,10 @@ class SemanticAnalyzer:
                 self._process_not_condition(child, table_name)
     
     def _process_not_condition(self, node, table_name):
-        """Process NOT condition"""
         for child in node.children:
             if child.name == "Comparison":
                 self._process_comparison(child, table_name)
             elif child.name == "BooleanExpr":
-                # Extract identifier from boolean expression
                 if child.value and child.value.startswith("IDENTIFIER:"):
                     col_name = child.value.split(':', 1)[1]
                     if col_name not in self.symbol_table[table_name]['columns']:
@@ -387,25 +332,21 @@ class SemanticAnalyzer:
                         )
     
     def _process_comparison(self, node, table_name):
-        """Process comparison and check type compatibility"""
         left_col = None
         left_type = None
         right_type = None
         right_literal = None
         
-        # Extract left and right expressions
         expressions = []
         for child in node.children:
             if child.name == "Expression":
                 expressions.append(child)
         
         if len(expressions) >= 2:
-            # Extract left side (should be a column)
             left_info = self._extract_comparison_operand(expressions[0])
             if left_info:
                 left_col, left_type, left_literal = left_info
                 
-                # Validate column exists
                 if left_type == "IDENTIFIER" and left_col:
                     if left_col not in self.symbol_table[table_name]['columns']:
                         token_info = self.get_token_info(left_col)
@@ -413,15 +354,12 @@ class SemanticAnalyzer:
                             f"Semantic Error: Column '{left_col}' does not exist in table '{table_name}' at line {token_info['line']}, column {token_info['col']}."
                         )
                         return
-                    # Get column type from symbol table
                     col_type = self.symbol_table[table_name]['columns'][left_col]
                     
-                    # Extract right side
                     right_info = self._extract_comparison_operand(expressions[1])
                     if right_info:
                         _, right_type, right_literal = right_info
                         
-                        # Check type compatibility
                         if right_type == "NUMBER":
                             if col_type == "TEXT":
                                 token_info = self.get_token_info(right_literal)
@@ -436,14 +374,12 @@ class SemanticAnalyzer:
                                 )
     
     def _extract_comparison_operand(self, node):
-        """Extract operand information from expression"""
         for child in node.children:
             if child.name == "Term":
                 return self._extract_from_term_comparison(child)
         return None
     
     def _extract_from_term_comparison(self, node):
-        """Extract operand from term"""
         for child in node.children:
             if child.name == "Factor":
                 if child.value and ':' in child.value:
@@ -452,7 +388,6 @@ class SemanticAnalyzer:
         return None
     
     def get_symbol_table_dump(self):
-        """Generate a formatted symbol table dump"""
         if not self.symbol_table:
             return "Symbol Table is empty.\n"
         
@@ -465,7 +400,6 @@ class SemanticAnalyzer:
         return output
     
     def get_annotated_tree(self):
-        """Generate annotated parse tree with type information"""
         if not self.parse_tree:
             return ""
         
@@ -474,14 +408,12 @@ class SemanticAnalyzer:
         return output
     
     def _annotate_node(self, node, prefix, is_last=True):
-        """Recursively annotate parse tree nodes with semantic information"""
         if node is None:
             return ""
         
         output = ""
         connector = "└── " if is_last else "├── "
         
-        # Add node with type annotation
         node_str = str(node)
         type_info = self._get_type_annotation(node)
         if type_info:
@@ -492,7 +424,6 @@ class SemanticAnalyzer:
         else:
             output += node_str + "\n"
         
-        # Process children
         for i, child in enumerate(node.children):
             is_last_child = (i == len(node.children) - 1)
             new_prefix = prefix + ("    " if is_last else "│   ")
@@ -501,11 +432,9 @@ class SemanticAnalyzer:
         return output
     
     def _get_type_annotation(self, node):
-        """Get type annotation for a node"""
         if node.name == "Factor" and node.value:
             if node.value.startswith("IDENTIFIER:"):
                 col_name = node.value.split(':', 1)[1]
-                # Find the type in symbol table
                 for table_name, table_info in self.symbol_table.items():
                     if col_name in table_info['columns']:
                         return f"Type: {table_info['columns'][col_name]}"

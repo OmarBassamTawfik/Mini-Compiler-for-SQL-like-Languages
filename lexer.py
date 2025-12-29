@@ -1,5 +1,3 @@
-import sys
-
 KEYWORDS = {'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 
             'DELETE', 'CREATE', 'TABLE', 'INT', 'FLOAT', 'TEXT', 'AND', 'OR', 'NOT'}
 

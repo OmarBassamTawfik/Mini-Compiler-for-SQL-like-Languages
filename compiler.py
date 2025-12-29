@@ -38,19 +38,15 @@ class CompilerHandler(http.server.SimpleHTTPRequestHandler):
             
             source_code = data.get('code', '')
             
-            # Run lexical analysis
             lexer = Lexer(source_code)
             tokens = lexer.tokenize()
             
-            # Run syntax analysis
             parser = Parser(tokens)
             parse_tree = parser.parse()
             
-            # Run semantic analysis
             semantic = SemanticAnalyzer(parse_tree, tokens)
             semantic_errors = semantic.analyze()
             
-            # Format results
             result = {
                 'lexer': {
                     'errors': lexer.errors,
